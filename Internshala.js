@@ -1,11 +1,9 @@
+require("dotenv").config();
 const puppeteer = require("puppeteer");
 const loginLink = "https://internshala.com/login/student";
 const path = require("path");
-const run = require("./TestGemini.js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-
-require("dotenv").config();
 
 let browserOpen = puppeteer.launch({
   headless: false,
@@ -91,28 +89,42 @@ async function internshipApply(selector) {
     );
     await inputUploadHandle.uploadFile(filePath);
 
-    const assessmentQuestions = await page.evaluate(() => {
-      const elements = document.querySelectorAll(".assessment_question label");
-      return elements.length
-        ? Array.from(elements).map((el) => el.textContent.trim())
-        : null;
+    const questionsAndTextAreas = await page.evaluate(() => {
+      const questions = Array.from(
+        document.querySelectorAll(".assessment_question label")
+      );
+      const textAreas = Array.from(
+        document.querySelectorAll('textarea[placeholder="Enter text ..."]')
+      );
+
+      return questions.map((question, index) => ({
+        questionText: question.textContent.trim(),
+        textAreaName: textAreas[index]
+          ? textAreas[index].getAttribute("name")
+          : null,
+      }));
     });
 
-    if (assessmentQuestions && assessmentQuestions.length > 0) {
-      for (const [index, question] of assessmentQuestions.entries()) {
-        const question = assessmentQuestions[0];
-        console.log(`Assessment Question : ${question}`);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = question;
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        console.log(text);
-        page.type('textarea[placeholder="Enter text ..."]', text, {
-          delay: 50,
-        });
+    for (const { questionText, textAreaName } of questionsAndTextAreas) {
+      if (!textAreaName) {
+        console.error(`No text area found for question: ${questionText}`);
+        continue;
       }
+
+      console.log(`Assessment Question: ${questionText}`);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = "Write a story about a magic backpack.";
+      const result = await model.generateContent(questionText);
+      const response = await result.response;
+      const text = response.text();
+      console.log(`Response Text: ${text}`);
+
+      // Type the response into the correct text area
+      await page.type(`textarea[name="${textAreaName}"]`, text, {
+        delay: 50,
+      });
     }
+
     await waitAndClick('input[id="submit"]', page);
     await waitAndClick('a[id="backToInternshipsCta"]', page);
   } catch (error) {
