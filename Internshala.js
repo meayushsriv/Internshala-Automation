@@ -43,7 +43,9 @@ browserOpen
     }); // Click on internships link
   })
   .then(function () {
-    return waitAndClick('input[id="matching_preference"]', page); // Click on matching preference
+    return waitAndClick('input[id="matching_preference"]', page, {
+      delay: 1000,
+    }); // Click on matching preference
   })
   .then(function () {
     let allInternshipsPromise = page.$$(".easy_apply", {
@@ -51,9 +53,9 @@ browserOpen
     });
     return allInternshipsPromise;
   })
-  .then(function (internshipsArray) {
-    console.log("Number of internships : ", internshipsArray.length);
-    let applyInternship = internshipApply(internshipsArray[0]);
+  .then(async function (internshipsArray) {
+    console.log("Number of internships: ", internshipsArray.length);
+    await internshipApply(internshipsArray[0]);
   })
   .catch(function (err) {
     console.error("Error: ", err);
@@ -113,20 +115,21 @@ async function internshipApply(selector) {
 
       console.log(`Assessment Question: ${questionText}`);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const prompt = "Write a story about a magic backpack.";
-      const result = await model.generateContent(questionText);
+      const result = await model.generateContent(
+        questionText + ". Write in less than 50 words."
+      );
       const response = await result.response;
       const text = response.text();
       console.log(`Response Text: ${text}`);
-
-      // Type the response into the correct text area
       await page.type(`textarea[name="${textAreaName}"]`, text, {
         delay: 50,
       });
     }
 
-    await waitAndClick('input[id="submit"]', page);
-    await waitAndClick('a[id="backToInternshipsCta"]', page);
+    await waitAndClick('input[id="submit"]', page, { delay: 1000 });
+    await page.goto(
+      "https://internshala.com/internships/matching-preferences/"
+    );
   } catch (error) {
     console.error("Error in internshipApply:", error);
   }
