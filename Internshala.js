@@ -42,14 +42,14 @@ browserOpen
     return waitAndClick('input[id="matching_preference"]', page); // Click on matching preference
   })
   .then(function () {
-    let allInternshipsPromise = page.$$(".internship_meta", {
+    let allInternshipsPromise = page.$$(".easy_apply", {
       delay: 50,
     });
     return allInternshipsPromise;
   })
   .then(function (internshipsArray) {
     console.log("Number of internships : ", internshipsArray.length);
-    let applyInternship = internshipApply(page, internshipsArray[0]);
+    let applyInternship = internshipApply(internshipsArray[0]);
   })
   .catch(function (err) {
     console.error("Error: ", err);
@@ -71,18 +71,14 @@ function waitAndClick(selector, cPage) {
   });
 }
 
-function internshipApply(page, selector) {
+async function internshipApply(selector) {
   return new Promise((resolve, reject) => {
     page
       .evaluate((selector) => {
-        if (selector) {
-          selector.click();
-        } else {
-          throw new Error("Element not found");
-        }
+        let internshipClick = selector.click();
       }, selector)
-      .then(() => {
-        resolve();
+      .then(function () {
+        return waitAndClick('button[id="continue_button"]', page);
       })
       .catch((error) => {
         reject(error);
