@@ -37,7 +37,9 @@ browserOpen
     return page.waitForNavigation(); // Wait for navigation after login
   })
   .then(function () {
-    return waitAndClick('a[id="internships_new_superscript"]', page); // Click on internships link
+    return waitAndClick('a[id="internships_new_superscript"]', page, {
+      delay: 1000,
+    }); // Click on internships link
   })
   .then(function () {
     return waitAndClick('input[id="matching_preference"]', page); // Click on matching preference
@@ -97,6 +99,34 @@ async function internshipApply(selector) {
         );
         return inputUploadHandle.uploadFile(filePath);
       })
+      .then(function () {
+        return page.evaluate(() => {
+          const elements = document.querySelectorAll(
+            ".assessment_question label"
+          );
+          if (elements.length) {
+            return Array.from(elements).map((element) =>
+              element.textContent.trim()
+            );
+          }
+          return null;
+        });
+      })
+      .then(function (assessmentQuestions) {
+        if (assessmentQuestions && assessmentQuestions.length > 0) {
+          assessmentQuestions.forEach((question, index) => {
+            console.log(`Assessment Question ${index + 1}: ${question}`);
+          });
+        } else {
+          console.log("No assessment questions found.");
+        }
+      })
+      //   .then(function () {
+      //     return waitAndClick('input[id="submit"]', page);
+      //   })
+      //   .then(function () {
+      //     return waitAndClick('a[id="backToInternshipsCta"]', page);
+      //   })
       .catch((error) => {
         reject(error);
       });
