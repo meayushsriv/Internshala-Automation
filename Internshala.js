@@ -116,7 +116,10 @@ async function internshipApply(selector) {
       console.log(`Assessment Question: ${questionText}`);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const result = await model.generateContent(
-        questionText + ". Write in less than 50 words."
+        questionText +
+          ". Write in less than 100 words." +
+          "This is my resume : " +
+          process.env.RESUME_DATA
       );
       const response = await result.response;
       const text = response.text();
