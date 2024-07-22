@@ -1,6 +1,9 @@
 const puppeteer = require("puppeteer");
 const loginLink = "https://internshala.com/login/student";
 const path = require("path");
+const run = require("./TestGemini.js");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const genAI = new GoogleGenerativeAI(process.env.API_KEY);
 
 require("dotenv").config();
 
@@ -75,60 +78,44 @@ function waitAndClick(selector, cPage) {
 }
 
 async function internshipApply(selector) {
-  return new Promise((resolve, reject) => {
-    page
-      .evaluate((selector) => {
-        let internshipClick = selector.click();
-      }, selector)
-      .then(function () {
-        return waitAndClick('button[id="continue_button"]', page);
-      })
-      .then(function () {
-        return waitAndClick('a[class="copyCoverLetterTitle"]', page);
-      })
-      .then(() => {
-        return page.waitForSelector('input[type="file"]');
-      })
-      .then(() => {
-        return page.$('input[type="file"]');
-      })
-      .then((inputUploadHandle) => {
-        const filePath = path.relative(
-          process.cwd(),
-          "./Ayush-Srivastava-Resume.pdf"
-        );
-        return inputUploadHandle.uploadFile(filePath);
-      })
-      .then(function () {
-        return page.evaluate(() => {
-          const elements = document.querySelectorAll(
-            ".assessment_question label"
-          );
-          if (elements.length) {
-            return Array.from(elements).map((element) =>
-              element.textContent.trim()
-            );
-          }
-          return null;
+  try {
+    await page.evaluate((sel) => sel.click(), selector);
+    await waitAndClick('button[id="continue_button"]', page);
+    await waitAndClick('a[class="copyCoverLetterTitle"]', page);
+
+    await page.waitForSelector('input[type="file"]');
+    const inputUploadHandle = await page.$('input[type="file"]');
+    const filePath = path.relative(
+      process.cwd(),
+      "./Ayush-Srivastava-Resume.pdf"
+    );
+    await inputUploadHandle.uploadFile(filePath);
+
+    const assessmentQuestions = await page.evaluate(() => {
+      const elements = document.querySelectorAll(".assessment_question label");
+      return elements.length
+        ? Array.from(elements).map((el) => el.textContent.trim())
+        : null;
+    });
+
+    if (assessmentQuestions && assessmentQuestions.length > 0) {
+      for (const [index, question] of assessmentQuestions.entries()) {
+        const question = assessmentQuestions[0];
+        console.log(`Assessment Question : ${question}`);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = question;
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        console.log(text);
+        page.type('textarea[placeholder="Enter text ..."]', text, {
+          delay: 50,
         });
-      })
-      .then(function (assessmentQuestions) {
-        if (assessmentQuestions && assessmentQuestions.length > 0) {
-          assessmentQuestions.forEach((question, index) => {
-            console.log(`Assessment Question ${index + 1}: ${question}`);
-          });
-        } else {
-          console.log("No assessment questions found.");
-        }
-      })
-      //   .then(function () {
-      //     return waitAndClick('input[id="submit"]', page);
-      //   })
-      //   .then(function () {
-      //     return waitAndClick('a[id="backToInternshipsCta"]', page);
-      //   })
-      .catch((error) => {
-        reject(error);
-      });
-  });
+      }
+    }
+    await waitAndClick('input[id="submit"]', page);
+    await waitAndClick('a[id="backToInternshipsCta"]', page);
+  } catch (error) {
+    console.error("Error in internshipApply:", error);
+  }
 }
