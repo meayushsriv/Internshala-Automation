@@ -1,5 +1,6 @@
 const puppeteer = require("puppeteer");
 const loginLink = "https://internshala.com/login/student";
+const path = require("path");
 
 require("dotenv").config();
 
@@ -79,6 +80,22 @@ async function internshipApply(selector) {
       }, selector)
       .then(function () {
         return waitAndClick('button[id="continue_button"]', page);
+      })
+      .then(function () {
+        return waitAndClick('a[class="copyCoverLetterTitle"]', page);
+      })
+      .then(() => {
+        return page.waitForSelector('input[type="file"]');
+      })
+      .then(() => {
+        return page.$('input[type="file"]');
+      })
+      .then((inputUploadHandle) => {
+        const filePath = path.relative(
+          process.cwd(),
+          "./Ayush-Srivastava-Resume.pdf"
+        );
+        return inputUploadHandle.uploadFile(filePath);
       })
       .catch((error) => {
         reject(error);
