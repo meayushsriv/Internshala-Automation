@@ -1,95 +1,86 @@
 require("dotenv").config();
-const puppeteer = require("puppeteer");
-const loginLink = "https://internshala.com/login/student";
+const express = require("express");
+const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+const pdfParse = require("pdf-parse");
+const puppeteer = require("puppeteer");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const app = express();
+const port = 3001;
+
+// Gemini Setup
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
 
-let browserOpen = puppeteer.launch({
-  headless: false,
-  args: ["--start-maximized"],
-  defaultViewport: null,
+// Multer Config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+const upload = multer({ storage });
+
+app.use(express.static("public"));
+app.use(express.urlencoded({ extended: true }));
+
+// Handle Form Submission
+app.post("/submit", upload.single("resume"), async (req, res) => {
+  const { email, password } = req.body;
+  const resumePath = path.join(__dirname, req.file.path);
+
+  try {
+    const buffer = fs.readFileSync(resumePath);
+    const pdfData = await pdfParse(buffer);
+    const resumeSummary = pdfData.text.slice(0, 1500);
+
+    await autoApplyInternships(email, password, resumeSummary);
+    res.send("Internships Applied Successfully!");
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).send("Failed to process your request.");
+  }
 });
 
-let page;
+app.listen(port, () =>
+  console.log(`Server running on http://localhost:${port}`)
+);
 
-browserOpen
-  .then(function (browserObj) {
-    let browserOpenPromise = browserObj.newPage(); // Open new page
-    return browserOpenPromise;
-  })
-  .then(function (newTab) {
-    page = newTab;
-    let internShalaOpenPromise = newTab.goto(loginLink); // Go to login page
-    return internShalaOpenPromise;
-  })
-  .then(function () {
-    return page.type("input[id='email']", process.env.EMAIL, { delay: 50 }); // Type email
-  })
-  .then(function () {
-    return page.type("input[id='password']", process.env.PASSWORD, {
-      delay: 50,
-    }); // Type password
-  })
-  .then(function () {
-    return page.click('button[id="login_submit"]', { delay: 40 }); // Click login button
-  })
-  .then(function () {
-    return page.waitForNavigation(); // Wait for navigation after login
-  })
-  .then(function () {
-    return waitAndClick('a[id="internships_new_superscript"]', page, {
-      delay: 1000,
-    }); // Click on internships link
-  })
-  .then(function () {
-    return waitAndClick('input[id="matching_preference"]', page, {
-      delay: 1000,
-    }); // Click on matching preference
-  })
-  .then(function () {
-    let allInternshipsPromise = page.$$(".easy_apply", {
-      delay: 50,
-    });
-    return allInternshipsPromise;
-  })
-  .then(async function (internshipsArray) {
-    console.log("Number of internships: ", internshipsArray.length);
-    await internshipApply(internshipsArray[0]);
-  })
-  .catch(function (err) {
-    console.error("Error: ", err);
+// Puppeteer + Gemini Flow
+async function autoApplyInternships(email, password, resumeSummary) {
+  const loginLink = "https://internshala.com/login/student";
+  const browser = await puppeteer.launch({
+    headless: false,
+    args: ["--start-maximized"],
+    defaultViewport: null,
   });
+  const page = await browser.newPage();
 
-function waitAndClick(selector, cPage) {
-  return new Promise(function (resolve, reject) {
-    cPage
-      .waitForSelector(selector)
-      .then(function () {
-        return cPage.click(selector);
-      })
-      .then(function () {
-        resolve();
-      })
-      .catch(function (error) {
-        reject(error);
-      });
-  });
+  await page.goto(loginLink);
+  await page.type("input[id='email']", email, { delay: 50 });
+  await page.type("input[id='password']", password, { delay: 50 });
+  await page.click("button[id='login_submit']", { delay: 40 });
+  await page.waitForNavigation();
+
+  await waitAndClick('a[id="internships_new_superscript"]', page);
+  await waitAndClick('input[id="matching_preference"]', page);
+
+  const internships = await page.$$(".easy_apply");
+  for (let internship of internships) {
+    await internshipApply(internship, page, resumeSummary);
+  }
+
+  await browser.close();
 }
 
-async function internshipApply(selector) {
+function waitAndClick(selector, cPage) {
+  return cPage.waitForSelector(selector).then(() => cPage.click(selector));
+}
+
+async function internshipApply(selector, page, resumeSummary) {
   try {
     await page.evaluate((sel) => sel.click(), selector);
     await waitAndClick('button[id="continue_button"]', page);
     await waitAndClick('a[class="copyCoverLetterTitle"]', page);
-
-    await page.waitForSelector('input[type="file"]');
-    const inputUploadHandle = await page.$('input[type="file"]');
-    const filePath = path.relative(
-      process.cwd(),
-      "./Ayush-Srivastava-Resume.pdf"
-    );
-    await inputUploadHandle.uploadFile(filePath);
 
     const questionsAndTextAreas = await page.evaluate(() => {
       const questions = Array.from(
@@ -107,29 +98,27 @@ async function internshipApply(selector) {
       }));
     });
 
-    for (const { questionText, textAreaName } of questionsAndTextAreas) {
-      if (!textAreaName) {
-        console.error(`No text area found for question: ${questionText}`);
-        continue;
-      }
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      console.log(`Assessment Question: ${questionText}`);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const result = await model.generateContent(
-        questionText +
-          ". Write in less than 100 words." +
-          "This is my resume : " +
-          process.env.RESUME_DATA
-      );
-      const response = await result.response;
-      const text = response.text();
-      console.log(`Response Text: ${text}`);
-      await page.type(`textarea[name="${textAreaName}"]`, text, {
-        delay: 50,
-      });
+    for (const { questionText, textAreaName } of questionsAndTextAreas) {
+      if (!textAreaName) continue;
+
+      const result = await model.generateContent([
+        {
+          role: "user",
+          parts: [
+            {
+              text: `My resume:\n${resumeSummary}\n\nPlease answer this internship assessment question in under 100 words:\n\"${questionText}\"`,
+            },
+          ],
+        },
+      ]);
+
+      const text = await result.response.text();
+      await page.type(`textarea[name="${textAreaName}"]`, text, { delay: 50 });
     }
 
-    await waitAndClick('input[id="submit"]', page, { delay: 1000 });
+    await waitAndClick('input[id="submit"]', page);
     await page.goto(
       "https://internshala.com/internships/matching-preferences/"
     );
