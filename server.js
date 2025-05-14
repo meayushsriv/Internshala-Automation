@@ -20,7 +20,7 @@ app.post("/submit", upload.single("resume"), async (req, res) => {
   try {
     const buffer = fs.readFileSync(resumePath);
     const pdfData = await pdfParse(buffer);
-    const resumeSummary = pdfData.text.slice(0, 1500); // Limit for Gemini prompt
+    const resumeSummary = pdfData.text.slice(0, 1500);
 
     const result = await runPuppeteerLogic({
       email,

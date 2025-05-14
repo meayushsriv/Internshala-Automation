@@ -22,15 +22,13 @@ async function runPuppeteerLogic({ email, password, resumeSummary, apiKey }) {
     waitUntil: "networkidle2",
   });
 
-  const internshipLinks = await page.$$eval(
-    ".individual_internship",
-    (cards) =>
-      cards
-        .map((card) => {
-          const anchor = card.querySelector("a");
-          return anchor ? anchor.href : null;
-        })
-        .filter(Boolean) // remove nulls
+  const internshipLinks = await page.$$eval(".individual_internship", (cards) =>
+    cards
+      .map((card) => {
+        const anchor = card.querySelector("a");
+        return anchor ? anchor.href : null;
+      })
+      .filter(Boolean)
   );
 
   const genAI = new GoogleGenerativeAI(apiKey);
@@ -51,7 +49,6 @@ async function runPuppeteerLogic({ email, password, resumeSummary, apiKey }) {
 
       let textAreas;
       try {
-        // Wait for text areas, using a more general selector or increasing wait time if necessary
         await page.waitForSelector(
           "textarea, #cover_letter_holder .ql-editor",
           {
@@ -63,7 +60,7 @@ async function runPuppeteerLogic({ email, password, resumeSummary, apiKey }) {
         );
       } catch (err) {
         console.warn("❗ No text areas found, proceeding to submit.");
-        textAreas = []; // Proceed without filling text areas
+        textAreas = [];
       }
 
       if (textAreas.length > 0) {
@@ -87,27 +84,11 @@ async function runPuppeteerLogic({ email, password, resumeSummary, apiKey }) {
         }
       }
 
-      // Handling the cover letter field (contenteditable div)
-      const coverLetterDiv = await page.$("#cover_letter_holder .ql-editor");
-      if (coverLetterDiv) {
-        const coverLetterPrompt = `My resume:\n${resumeSummary}\n\nPlease write a cover letter for this internship, including why I am a good fit.`;
-        const coverLetterResult = await model.generateContent(
-          coverLetterPrompt
-        );
-        const coverLetterText = await coverLetterResult.response.text();
-
-        // Setting the cleaned cover letter text into the contenteditable div
-        await page.evaluate((coverLetterText) => {
-          document.querySelector("#cover_letter_holder .ql-editor").innerHTML =
-            coverLetterText;
-        }, coverLetterText);
-      }
-
       const submitBtn = await page.$("input#submit");
       if (submitBtn) {
         await submitBtn.click();
         applied++;
-        await page.waitForTimeout(2000); // Fixed waitForTimeout issue
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     } catch (err) {
       console.error("❗ Skipped an internship due to error:", err.message);
